@@ -13,7 +13,7 @@ DEPFLAGS =	-M
 
 LINK =		g++
 LINKFLAGS =	-g -O
-LIB = -L/Users/iain/Desktop/mist/mist -lmist
+LIB = 
 SIZE =		size
 
 ARCHIVE =	ar
