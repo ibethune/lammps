@@ -1,0 +1,14 @@
+This package implements the "run_style mist" command which can be used
+in a LAMMPS input script.
+
+This fix enables the MIST library to be used in a LAMMPS simulation, providing portable
+access to a number of novel integration schemes.
+
+This package uses an external library in lib/mist which must be
+compiled before making LAMMPS.  See the lib/mist/README file and the
+LAMMPS manual for information on building LAMMPS with external
+libraries.  The settings in the Makefile.lammps file in that directory
+must be correct for LAMMPS to build correctly with this package
+installed.
+
+The person who created this package is Iain Bethune (iain.bethune at stfc.ac.uk)
