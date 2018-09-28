@@ -39,7 +39,7 @@ using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
 
-Mist_run::Mist_run(LAMMPS *lmp, int narg, char **arg) :
+Mist::Mist(LAMMPS *lmp, int narg, char **arg) :
   Integrate(lmp, narg, arg) {
 
 pointerToData=new Pointers(lmp);
@@ -53,7 +53,7 @@ pointerToData=new Pointers(lmp);
    initialization before run
 ------------------------------------------------------------------------- */
 
-void Mist_run::init()
+void Mist::init()
 {
   pointerToData=this;
 
@@ -99,7 +99,7 @@ void Mist_run::init()
    setup before run
 ------------------------------------------------------------------------- */
 
-void Mist_run::setup(int flag)
+void Mist::setup(int flag)
 {
   if (comm->me == 0 && screen) {
     fprintf(screen,"Setting up MIST run ...\n");
@@ -178,7 +178,7 @@ void Mist_run::setup(int flag)
    flag = 1 = reneighbor and force calculation
 ------------------------------------------------------------------------- */
 
-void Mist_run::setup_minimal(int flag)
+void Mist::setup_minimal(int flag)
 {
   update->setupflag = 1;
 
@@ -238,7 +238,7 @@ void Mist_run::setup_minimal(int flag)
    run for N steps
 ------------------------------------------------------------------------- */
 
-void Mist_run::run(int n)
+void Mist::run(int n)
 {
   bigint ntimestep;
   int nflag,sortflag;
@@ -328,7 +328,7 @@ void Mist_run::run(int n)
 
 /* ---------------------------------------------------------------------- */
 
-void Mist_run::cleanup()
+void Mist::cleanup()
 {
   // Finalise MIST library
   MIST_chkerr(MIST_Cleanup(),__FILE__,__LINE__);
@@ -343,7 +343,7 @@ void Mist_run::cleanup()
    clear other arrays as needed
 ------------------------------------------------------------------------- */
 
-void Mist_run::force_clear()
+void Mist::force_clear()
 {
   size_t nbytes;
 
@@ -387,7 +387,7 @@ void Mist_run::force_clear()
   }
 }
 
-void Mist_run::MIST_chkerr(int misterr, const char* file,int line){
+void Mist::MIST_chkerr(int misterr, const char* file,int line){
 
   char errmsg[100];
 
@@ -418,14 +418,14 @@ void Mist_run::MIST_chkerr(int misterr, const char* file,int line){
 
 
 
-void Mist_run::step_force_wrapper(void * s)
+void Mist::step_force_wrapper(void * s)
 {
 
-  update_forces_step((Mist_run *) s);
+  update_forces_step((Mist *) s);
 
 }
 
-void Mist_run::update_forces_step(Mist_run* m){
+void Mist::update_forces_step(Mist* m){
 
 
   LAMMPS *lp = m->lmp;
@@ -486,7 +486,7 @@ void Mist_run::update_forces_step(Mist_run* m){
 
 
 
-void Mist_run::mist_setup(){
+void Mist::mist_setup(){
 
   // MIST setup
       int feature;

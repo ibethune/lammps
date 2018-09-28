@@ -13,7 +13,7 @@
 
 #ifdef INTEGRATE_CLASS
 
-IntegrateStyle(mist_run,Mist_run)
+IntegrateStyle(mist,Mist)
 
 #else
 
@@ -25,10 +25,10 @@ IntegrateStyle(mist_run,Mist_run)
 
 namespace LAMMPS_NS {
 
-class Mist_run : public Integrate {
+class Mist : public Integrate {
  public:
-  Mist_run(class LAMMPS *, int, char **);
-  virtual ~Mist_run() {}
+  Mist(class LAMMPS *, int, char **);
+  virtual ~Mist() {}
   virtual void init();
   virtual void setup(int flag);
   virtual void setup_minimal(int);
@@ -48,7 +48,7 @@ class Mist_run : public Integrate {
   void MIST_chkerr(int misterr, const char* file,int line);
   void mist_setup();
   static void step_force_wrapper(void *s);
-  static void update_forces_step(Mist_run *lp);
+  static void update_forces_step(Mist *lp);
 
   class Compute *pe;
   double *potEnergyPtr;
@@ -58,11 +58,11 @@ class Mist_run : public Integrate {
 
 /*
 // Mist_run pointer -> bad solution...
-Mist_run* mist_force_wrapper;
+Mist* mist_force_wrapper;
 
 void Mist_run_memberFunctionWrapper(void *s){
 
-mist_force_wrapper->update_forces_step(Mist_run *s);
+mist_force_wrapper->update_forces_step(Mist *s);
 
 }
 */
