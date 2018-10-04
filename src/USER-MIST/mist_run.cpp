@@ -265,55 +265,14 @@ void Mist::run(int n)
     ev_set(ntimestep);
 
 
- // TODO: make sure the timers get updated
- // TODO: put pre and post-force in force callback
- // TODO: check if any of the modify calls are required
-
-    // regular communication vs neighbor list rebuild
-
-    nflag = neighbor->decide();
-
-    if (nflag == 0) {
-      timer->stamp();
-      comm->forward_comm();
-      timer->stamp(Timer::COMM);
-    } else {
-      if (n_pre_exchange) {
-        timer->stamp();
-        modify->pre_exchange();
-        timer->stamp(Timer::MODIFY);
-      }
-      domain->pbc();
-      if (domain->box_change) {
-        domain->reset_box();
-        comm->setup();
-        if (neighbor->style) neighbor->setup_bins();
-      }
-      timer->stamp();
-      comm->exchange();
-      if (sortflag && ntimestep >= atom->nextsort) atom->sort();
-      comm->borders();
-      timer->stamp(Timer::COMM);
-      if (n_pre_neighbor) {
-        modify->pre_neighbor();
-        timer->stamp(Timer::MODIFY);
-      }
-      neighbor->build(1);
-      timer->stamp(Timer::NEIGH);
-      if (n_post_neighbor) {
-        modify->post_neighbor();
-        timer->stamp(Timer::MODIFY);
-      }
-    }
-
-
      //potEnergyPtr[0]= pe->compute_scalar();
       MIST_chkerr(MIST_Step(update->dt),__FILE__,__LINE__);
 
 
+
+
     // force modifications, final time integration, diagnostics
 
-    if (n_post_force) modify->post_force(vflag);
     if (n_end_of_step) modify->end_of_step();
 
     // all output
@@ -429,9 +388,48 @@ void Mist::update_forces_step(Mist* m){
 
 
   LAMMPS *lp = m->lmp;
+  int eflag = m->eflag;
+  int vflag = m->vflag;
 
-  int eeflag=lp->update->eflag_global;
-  int vvflag=lp->update->vflag_global;
+    if (lp->modify->n_post_integrate) lp->modify->post_integrate();
+
+    // regular communication vs neighbor list rebuild
+
+    int nflag = lp->neighbor->decide();
+
+    if (nflag == 0) {
+      lp->timer->stamp();
+      lp->comm->forward_comm();
+      lp->timer->stamp(Timer::COMM);
+    } else {
+      if (lp->modify->n_pre_exchange) {
+        lp->timer->stamp();
+        lp->modify->pre_exchange();
+        lp->timer->stamp(Timer::MODIFY);
+      }
+      lp->domain->pbc();
+      if (lp->domain->box_change) {
+        lp->domain->reset_box();
+        lp->comm->setup();
+        if (lp->neighbor->style) lp->neighbor->setup_bins();
+      }
+      lp->timer->stamp();
+      lp->comm->exchange();
+      if (lp->atom->sortfreq > 0 && lp->update->ntimestep >= lp->atom->nextsort) lp->atom->sort();
+      lp->comm->borders();
+      lp->timer->stamp(Timer::COMM);
+      if (lp->modify->n_pre_neighbor) {
+        lp->modify->pre_neighbor();
+        lp->timer->stamp(Timer::MODIFY);
+      }
+      lp->neighbor->build(1);
+      lp->timer->stamp(Timer::NEIGH);
+      if (lp->modify->n_post_neighbor) {
+        lp->modify->post_neighbor();
+        lp->timer->stamp(Timer::MODIFY);
+      }
+    }
+
 
     // force computations
     // important for pair to come before bonded contributions
@@ -445,32 +443,32 @@ void Mist::update_forces_step(Mist* m){
         lp->timer->stamp();
 
         // no preforce in mist
-        //if (n_pre_force) {
-        //  modify->pre_force(vflag);
-        //  timer->stamp(Timer::MODIFY);
-        //}
+        if (lp->modify->n_pre_force) {
+          lp->modify->pre_force(vflag);
+          lp->timer->stamp(Timer::MODIFY);
+        }
 
         if (m->pair_compute_flag) {
-          lp->force->pair->compute(eeflag,vvflag);
+          lp->force->pair->compute(eflag,vflag);
           lp->timer->stamp(Timer::PAIR);
         }
 
         if (lp->atom->molecular) {
-          if (lp->force->bond) lp->force->bond->compute(eeflag,vvflag);
-          if (lp->force->angle) lp->force->angle->compute(eeflag,vvflag);
-          if (lp->force->dihedral) lp->force->dihedral->compute(eeflag,vvflag);
-          if (lp->force->improper) lp->force->improper->compute(eeflag,vvflag);
+          if (lp->force->bond) lp->force->bond->compute(eflag,vflag);
+          if (lp->force->angle) lp->force->angle->compute(eflag,vflag);
+          if (lp->force->dihedral) lp->force->dihedral->compute(eflag,vflag);
+          if (lp->force->improper) lp->force->improper->compute(eflag,vflag);
           lp->timer->stamp(Timer::BOND);
         }
 
         if (m->kspace_compute_flag) {
-          lp->force->kspace->compute(eeflag,vvflag);
+          lp->force->kspace->compute(eflag,vflag);
           lp->timer->stamp(Timer::KSPACE);
         }
 
         int n_pre_reverse = lp->modify->n_pre_reverse;
         if (n_pre_reverse) {
-          lp->modify->pre_reverse(eeflag,vvflag);
+          lp->modify->pre_reverse(eflag,vflag);
           lp->timer->stamp(Timer::MODIFY);
         }
 
@@ -482,6 +480,7 @@ void Mist::update_forces_step(Mist* m){
           lp->timer->stamp(Timer::COMM);
         }
 
+    if (lp->modify->n_post_force) lp->modify->post_force(vflag);
 }
 
 
