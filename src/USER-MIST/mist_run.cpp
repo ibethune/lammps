@@ -62,7 +62,7 @@ void Mist::init()
   // warn if any fixes - mist does everything
 
   if (modify->nfix != 0 && comm->me == 0)
-    error->warning(FLERR,"Fixes have been defined, but MIST may ignore them!");
+    error->warning(FLERR,"Fixes have been defined, but MIST will ignore them!");
 
   // virial_style:
   // 1 if computed explicitly by pair->compute via sum over pair interactions
@@ -92,6 +92,19 @@ void Mist::init()
 
   MIST_chkerr(MIST_Init(),__FILE__,__LINE__);
 
+  double amu = 1.0; // for lj, real, metal, and electron units
+
+  if (strcmp(update->unit_style,"si") == 0) {
+    amu = 1.660539040e-27;
+  } else if (strcmp(update->unit_style,"cgs") == 0) {
+    amu = 1.660539040e-24;
+  } else if (strcmp(update->unit_style,"micro") == 0) {
+    amu = 1.660539040e-12;
+  } else if (strcmp(update->unit_style,"nano") == 0) {
+    amu = 1.660539040e-6;
+  }
+
+  MIST_chkerr(MIST_SetUnitSystem(force->boltz, force->femtosecond*1000.0, amu, force->angstrom ),__FILE__,__LINE__);
 
 }
 
@@ -104,9 +117,6 @@ void Mist::setup(int flag)
   if (comm->me == 0 && screen) {
     fprintf(screen,"Setting up MIST run ...\n");
     fprintf(screen,"  Unit style    : %s\n", update->unit_style);
-    if (strcmp(update->unit_style,"lj") != 0) {
-      error->all(FLERR,"MIST only works with lj units");
-    }
     fprintf(screen,"  Current step  : " BIGINT_FORMAT "\n", update->ntimestep);
     fprintf(screen,"  Time step     : %g\n", update->dt);
     timer->print_timeout(screen);
