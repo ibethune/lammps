@@ -41,6 +41,9 @@ using namespace LAMMPS_NS;
 
 Mist::Mist(LAMMPS *lmp, int narg, char **arg) :
   Integrate(lmp, narg, arg) {
+
+  energy_required = false;
+  pe_compute = NULL;
 }
 
 /* ----------------------------------------------------------------------
@@ -79,25 +82,6 @@ void Mist::init()
 
   if (domain->triclinic) error->all(FLERR, "MIST only supports orthorhombic cells");
 
-
-  // Initialise MIST library
-
-  MIST_chkerr(MIST_Init(),__FILE__,__LINE__);
-
-  double amu = 1.0; // for lj, real, metal, and electron units
-
-  if (strcmp(update->unit_style,"si") == 0) {
-    amu = 1.660539040e-27;
-  } else if (strcmp(update->unit_style,"cgs") == 0) {
-    amu = 1.660539040e-24;
-  } else if (strcmp(update->unit_style,"micro") == 0) {
-    amu = 1.660539040e-12;
-  } else if (strcmp(update->unit_style,"nano") == 0) {
-    amu = 1.660539040e-6;
-  }
-
-  MIST_chkerr(MIST_SetUnitSystem(force->boltz, force->femtosecond*1000.0, amu, force->angstrom ),__FILE__,__LINE__);
-
 }
 
 /* ----------------------------------------------------------------------
@@ -108,14 +92,13 @@ void Mist::setup(int flag)
 {
   if (comm->me == 0 && screen) {
     fprintf(screen,"Setting up MIST run ...\n");
-    fprintf(screen,"  Unit style    : %s\n", update->unit_style);
-    fprintf(screen,"  Current step  : " BIGINT_FORMAT "\n", update->ntimestep);
-    fprintf(screen,"  Time step     : %g\n", update->dt);
-    timer->print_timeout(screen);
+    if (flag) {
+      fprintf(screen,"  Unit style    : %s\n", update->unit_style);
+      fprintf(screen,"  Current step  : " BIGINT_FORMAT "\n", update->ntimestep);
+      fprintf(screen,"  Time step     : %g\n", update->dt);
+      timer->print_timeout(screen);
+    }
   }
-
-  if (lmp->kokkos)
-    error->all(FLERR,"KOKKOS package not supported by run_style mist");
 
   update->setupflag = 1;
 
@@ -139,10 +122,15 @@ void Mist::setup(int flag)
   modify->setup_post_neighbor();
   neighbor->ncalls = 0;
 
+  // Initialise MIST
+
+  mist_setup();
+
   // compute all forces
 
   force->setup();
   ev_set(update->ntimestep);
+  if (energy_required) eflag |= 1;
   force_clear();
   modify->setup_pre_force(vflag);
 
@@ -168,9 +156,6 @@ void Mist::setup(int flag)
   modify->setup(vflag);
   output->setup(flag);
   update->setupflag = 0;
-
-  // Set up MIST library
-  mist_setup();
 
 }
 
@@ -204,9 +189,14 @@ void Mist::setup_minimal(int flag)
     neighbor->ncalls = 0;
   }
 
+  // Initialise MIST
+
+  mist_setup();
+
   // compute all forces
 
   ev_set(update->ntimestep);
+  if (energy_required) eflag |= 1;
   force_clear();
   modify->setup_pre_force(vflag);
 
@@ -232,8 +222,6 @@ void Mist::setup_minimal(int flag)
   modify->setup(vflag);
   update->setupflag = 0;
 
-  // Set up MIST library
-  mist_setup();
 }
 
 /* ----------------------------------------------------------------------
@@ -265,10 +253,10 @@ void Mist::run(int n)
 
     ntimestep = ++update->ntimestep;
     ev_set(ntimestep);
+    if (energy_required) eflag |= 1;
 
 
-     //potEnergyPtr[0]= pe->compute_scalar();
-      MIST_chkerr(MIST_Step(update->dt),__FILE__,__LINE__);
+    MIST_chkerr(MIST_Step(update->dt),__FILE__,__LINE__);
 
 
 
@@ -478,71 +466,83 @@ void Mist::update_forces()
   if (modify->n_post_force) modify->post_force(vflag);
 }
 
+/* ---------------------------------------------------------------------- */
+
 void Mist::mist_setup(){
 
-  // MIST setup
-      int feature;
-      MIST_chkerr(MIST_GetFeatures(&feature),__FILE__,__LINE__);
-      fprintf(screen, "TO BE DONE: Mist feature = %d\n", feature);
+  // Initialise MIST library
 
-      // Set pointers for MIST to access particle data
-      //in atom- positions as double **x
+  MIST_chkerr(MIST_Init(),__FILE__,__LINE__);
 
-//number of atoms is natoms or nlocal- parallel..???
+  double amu = 1.0; // for lj, real, metal, and electron units
 
-    MIST_chkerr(MIST_SetNumParticles(atom->nlocal),__FILE__,__LINE__);
-    MIST_chkerr(MIST_SetKinds(atom->type),__FILE__,__LINE__);
-    MIST_chkerr(MIST_SetPositions(*atom->x),__FILE__,__LINE__);
-    MIST_chkerr(MIST_SetVelocities(*atom->v),__FILE__,__LINE__);
-    MIST_chkerr(MIST_SetForces(*atom->f),__FILE__,__LINE__);
+  if (strcmp(update->unit_style,"si") == 0) {
+    amu = 1.660539040e-27;
+  } else if (strcmp(update->unit_style,"cgs") == 0) {
+    amu = 1.660539040e-24;
+  } else if (strcmp(update->unit_style,"micro") == 0) {
+    amu = 1.660539040e-12;
+  } else if (strcmp(update->unit_style,"nano") == 0) {
+    amu = 1.660539040e-6;
+  }
 
-      fprintf(screen, "To be done: set potential energy\n");
-  //  MIST_chkerr(MIST_SetPotentialEnergy(*atom->f),__FILE__,__LINE__);
-
-    MIST_chkerr(MIST_SetForceCallback(lammps_force_wrapper, (void *)this),__FILE__,__LINE__);
-
-    double *masses = new double [sizeof(double)*atom->nlocal];//atom->natoms];
-    double *mass = atom->mass;
-    double *rmass = atom->rmass;
-    int *type = atom->type;
-    int *mask = atom->mask;
-    int nratoms = atom->nlocal;//atom->natoms;
-
-      if (rmass) {
-        for (int i = 0; i < nratoms; i++)
-          if (mask[i] ) {
-              masses[i]= rmass[i] / force->ftm2v;
-
-        }
-
-      } else {
-        for (int i = 0; i < nratoms; i++)
-          if (mask[i] ) {
-            masses[i]= mass[type[i]] / force->ftm2v;
-
-            }
-        }
+  // masses are stored scaled by a factor 1/ftm2v
+  MIST_chkerr(MIST_SetUnitSystem(force->boltz, force->femtosecond*1000.0, amu*force->ftm2v, force->angstrom ),__FILE__,__LINE__);
 
 
+  int features;
+  MIST_chkerr(MIST_GetFeatures(&features),__FILE__,__LINE__);
 
-    MIST_chkerr(MIST_SetMasses(masses),__FILE__,__LINE__);
+  if (features & MIST_FEATURE_FORCE_COMPONENTS) error->all(FLERR, "Access to individual components of the force-field is not implemented in LAMMPS");
+  if (features & MIST_FEATURE_POS_VEL_OFFSET_PLUS_HALF_DT) error->all(FLERR, "Time-offset positions and velocities is not implemented in LAMMPS");
+  if (features & MIST_FEATURE_REQUIRES_KINDS) error->all(FLERR, "Access to particle kinds is not implemented in LAMMPS");
+  if (features & MIST_FEATURE_REQUIRES_ENERGY_WITH_FORCES) {
+    energy_required = true;
 
+    // compute for potential energy
+    int id = modify->find_compute("thermo_pe");
+    if (id < 0) error->all(FLERR,"MIST could not find thermo_pe compute");
+    pe_compute = modify->compute[id];
+    MIST_chkerr(MIST_SetPotentialEnergy(&(pe_compute->scalar)),__FILE__,__LINE__);
+  }
 
- int nbonds= atom->nbonds;
- int counter=0;
+  // XXX only works in serial case
+  MIST_chkerr(MIST_SetNumParticles(atom->nlocal),__FILE__,__LINE__);
+  MIST_chkerr(MIST_SetKinds(atom->type),__FILE__,__LINE__);
+  MIST_chkerr(MIST_SetPositions(*atom->x),__FILE__,__LINE__);
+  MIST_chkerr(MIST_SetVelocities(*atom->v),__FILE__,__LINE__);
+  MIST_chkerr(MIST_SetForces(*atom->f),__FILE__,__LINE__);
 
+  MIST_chkerr(MIST_SetForceCallback(lammps_force_wrapper, (void *)this),__FILE__,__LINE__);
 
-//if (atom->molecular) {}
+  // XXX serial only
+  double *masses = new double [sizeof(double)*atom->nlocal];
+  double *mass = atom->mass;
+  double *rmass = atom->rmass;
+  int *type = atom->type;
+  int *mask = atom->mask;
+  int nratoms = atom->nlocal;//atom->natoms;
 
-    MIST_chkerr(MIST_SetNumBonds(nbonds),__FILE__,__LINE__);
+  if (rmass) {
+    for (int i = 0; i < nratoms; i++)
+      masses[i]= rmass[i] / force->ftm2v;
+  } else {
+    for (int i = 0; i < nratoms; i++)
+      masses[i]= mass[type[i]] / force->ftm2v;
+  }
 
+  MIST_chkerr(MIST_SetMasses(masses),__FILE__,__LINE__);
 
-if (atom->molecular) {
+  int nbonds=atom->nbonds;
+  int counter=0;
+
+  MIST_chkerr(MIST_SetNumBonds(nbonds),__FILE__,__LINE__);
+
+  // XXX This needs testing
+  if (atom->molecular) {
     for (int i = 0; i < nratoms; i++)
     {
       for (int j=0; j<atom->num_bond[i]; j++){
-
-
 
         double *y=atom->x[atom->bond_atom[i][j]];
         double *tmp=new double[3];
@@ -569,6 +569,5 @@ if (atom->molecular) {
               }
     }
   }
-
 
 }

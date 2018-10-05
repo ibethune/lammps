@@ -43,6 +43,8 @@ class Mist : public Integrate {
 
   // Everything above here by analogy to verlet.h
 
+  bool energy_required;
+
   // Helper function to check for errors from MIST
   void MIST_chkerr(int misterr, const char* file,int line);
 
@@ -55,9 +57,7 @@ class Mist : public Integrate {
   // Do the actual force update
   void update_forces();
 
-  // XXX need to check if these are needed
-  class Compute *pe;
-  double *potEnergyPtr;
+  class Compute *pe_compute;
 
 };
 
