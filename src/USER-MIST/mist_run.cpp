@@ -41,12 +41,6 @@ using namespace LAMMPS_NS;
 
 Mist::Mist(LAMMPS *lmp, int narg, char **arg) :
   Integrate(lmp, narg, arg) {
-
-pointerToData=new Pointers(lmp);
-//potEnergyPtr=NULL;
-
-//step_force_wrapper_pointer=NULL;
-
 }
 
 /* ----------------------------------------------------------------------
@@ -55,8 +49,6 @@ pointerToData=new Pointers(lmp);
 
 void Mist::init()
 {
-  pointerToData=this;
-
   Integrate::init(); 
 
   // warn if any fixes - mist does everything
@@ -387,113 +379,104 @@ void Mist::MIST_chkerr(int misterr, const char* file,int line){
 
 
 
-void Mist::step_force_wrapper(void * s)
+void Mist::lammps_force_wrapper(void *data)
 {
 
-  update_forces_step((Mist *) s);
-
+  Mist *m = (Mist *)data;
+  m->update_forces();
 }
 
-void Mist::update_forces_step(Mist* m){
+void Mist::update_forces()
+{
+  timer->stamp();
+  if (modify->n_post_integrate) modify->post_integrate();
+  timer->stamp(Timer::MODIFY);
 
+  // regular communication vs neighbor list rebuild
 
-  LAMMPS *lp = m->lmp;
-  int eflag = m->eflag;
-  int vflag = m->vflag;
+  int nflag = neighbor->decide();
 
-    if (lp->modify->n_post_integrate) lp->modify->post_integrate();
-
-    // regular communication vs neighbor list rebuild
-
-    int nflag = lp->neighbor->decide();
-
-    if (nflag == 0) {
-      lp->timer->stamp();
-      lp->comm->forward_comm();
-      lp->timer->stamp(Timer::COMM);
-    } else {
-      if (lp->modify->n_pre_exchange) {
-        lp->timer->stamp();
-        lp->modify->pre_exchange();
-        lp->timer->stamp(Timer::MODIFY);
-      }
-      lp->domain->pbc();
-      if (lp->domain->box_change) {
-        lp->domain->reset_box();
-        lp->comm->setup();
-        if (lp->neighbor->style) lp->neighbor->setup_bins();
-      }
-      lp->timer->stamp();
-      lp->comm->exchange();
-      if (lp->atom->sortfreq > 0 && lp->update->ntimestep >= lp->atom->nextsort) lp->atom->sort();
-      lp->comm->borders();
-      lp->timer->stamp(Timer::COMM);
-      if (lp->modify->n_pre_neighbor) {
-        lp->modify->pre_neighbor();
-        lp->timer->stamp(Timer::MODIFY);
-      }
-      lp->neighbor->build(1);
-      lp->timer->stamp(Timer::NEIGH);
-      if (lp->modify->n_post_neighbor) {
-        lp->modify->post_neighbor();
-        lp->timer->stamp(Timer::MODIFY);
-      }
+  if (nflag == 0) {
+    timer->stamp();
+    comm->forward_comm();
+    timer->stamp(Timer::COMM);
+  } else {
+    if (modify->n_pre_exchange) {
+      timer->stamp();
+      modify->pre_exchange();
+      timer->stamp(Timer::MODIFY);
     }
+    domain->pbc();
+    if (domain->box_change) {
+      domain->reset_box();
+      comm->setup();
+      if (neighbor->style) neighbor->setup_bins();
+    }
+    timer->stamp();
+    comm->exchange();
+    if (atom->sortfreq > 0 && update->ntimestep >= atom->nextsort) atom->sort();
+    comm->borders();
+    timer->stamp(Timer::COMM);
+    if (modify->n_pre_neighbor) {
+      modify->pre_neighbor();
+      timer->stamp(Timer::MODIFY);
+    }
+    neighbor->build(1);
+    timer->stamp(Timer::NEIGH);
+    if (modify->n_post_neighbor) {
+      modify->post_neighbor();
+      timer->stamp(Timer::MODIFY);
+    }
+  }
 
+  // force computations
+  // important for pair to come before bonded contributions
+  // since some bonded potentials tally pairwise energy/virial
+  // and Pair:ev_tally() needs to be called before any tallying
 
-    // force computations
-    // important for pair to come before bonded contributions
-    // since some bonded potentials tally pairwise energy/virial
-    // and Pair:ev_tally() needs to be called before any tallying
+  force_clear();
 
+  timer->stamp();
 
-    m->force_clear();
+  if (modify->n_pre_force) {
+    modify->pre_force(vflag);
+    timer->stamp(Timer::MODIFY);
+  }
 
+  if (pair_compute_flag) {
+    force->pair->compute(eflag,vflag);
+    timer->stamp(Timer::PAIR);
+  }
 
-        lp->timer->stamp();
+  if (atom->molecular) {
+    if (force->bond) force->bond->compute(eflag,vflag);
+    if (force->angle) force->angle->compute(eflag,vflag);
+    if (force->dihedral) force->dihedral->compute(eflag,vflag);
+    if (force->improper) force->improper->compute(eflag,vflag);
+    timer->stamp(Timer::BOND);
+  }
 
-        // no preforce in mist
-        if (lp->modify->n_pre_force) {
-          lp->modify->pre_force(vflag);
-          lp->timer->stamp(Timer::MODIFY);
-        }
+  if (kspace_compute_flag) {
+    force->kspace->compute(eflag,vflag);
+    timer->stamp(Timer::KSPACE);
+  }
 
-        if (m->pair_compute_flag) {
-          lp->force->pair->compute(eflag,vflag);
-          lp->timer->stamp(Timer::PAIR);
-        }
+  if (modify->n_pre_reverse) {
+    modify->pre_reverse(eflag,vflag);
+    timer->stamp(Timer::MODIFY);
+  }
 
-        if (lp->atom->molecular) {
-          if (lp->force->bond) lp->force->bond->compute(eflag,vflag);
-          if (lp->force->angle) lp->force->angle->compute(eflag,vflag);
-          if (lp->force->dihedral) lp->force->dihedral->compute(eflag,vflag);
-          if (lp->force->improper) lp->force->improper->compute(eflag,vflag);
-          lp->timer->stamp(Timer::BOND);
-        }
+  // reverse communication of forces
 
-        if (m->kspace_compute_flag) {
-          lp->force->kspace->compute(eflag,vflag);
-          lp->timer->stamp(Timer::KSPACE);
-        }
+  if (force->newton) {
+    comm->reverse_comm();
+    timer->stamp(Timer::COMM);
+  }
 
-        int n_pre_reverse = lp->modify->n_pre_reverse;
-        if (n_pre_reverse) {
-          lp->modify->pre_reverse(eflag,vflag);
-          lp->timer->stamp(Timer::MODIFY);
-        }
+  // force modification
 
-
-        // reverse communication of forces
-
-        if (lp->force->newton) {
-          lp->comm->reverse_comm();
-          lp->timer->stamp(Timer::COMM);
-        }
-
-    if (lp->modify->n_post_force) lp->modify->post_force(vflag);
+  if (modify->n_post_force) modify->post_force(vflag);
 }
-
-
 
 void Mist::mist_setup(){
 
@@ -516,7 +499,7 @@ void Mist::mist_setup(){
       fprintf(screen, "To be done: set potential energy\n");
   //  MIST_chkerr(MIST_SetPotentialEnergy(*atom->f),__FILE__,__LINE__);
 
-    MIST_chkerr(MIST_SetForceCallback(step_force_wrapper, (void *)this),__FILE__,__LINE__);
+    MIST_chkerr(MIST_SetForceCallback(lammps_force_wrapper, (void *)this),__FILE__,__LINE__);
 
     double *masses = new double [sizeof(double)*atom->nlocal];//atom->natoms];
     double *mass = atom->mass;

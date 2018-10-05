@@ -43,46 +43,33 @@ class Mist : public Integrate {
 
   // Everything above here by analogy to verlet.h
 
-  Pointers *pointerToData;
-
+  // Helper function to check for errors from MIST
   void MIST_chkerr(int misterr, const char* file,int line);
-  void mist_setup();
-  static void step_force_wrapper(void *s);
-  static void update_forces_step(Mist *lp);
 
+  // Setup function to avoid code duplication
+  void mist_setup();
+
+  // Callback that MIST uses to update forces
+  static void lammps_force_wrapper(void *data);
+
+  // Do the actual force update
+  void update_forces();
+
+  // XXX need to check if these are needed
   class Compute *pe;
   double *potEnergyPtr;
 
 };
 
-
-/*
-// Mist_run pointer -> bad solution...
-Mist* mist_force_wrapper;
-
-void Mist_run_memberFunctionWrapper(void *s){
-
-mist_force_wrapper->update_forces_step(Mist *s);
-
-}
-*/
-
 }
 #endif
 #endif
-
-
 
 /* ERROR/WARNING messages:
 
-W: No fixes defined, atoms won't move
+W: Fixes have been defined, but MIST will ignore them!
 
-If you are not using a fix like nve, nvt, npt then atom velocities and
-coordinates will not be updated during timestepping.
-
-E: KOKKOS package requires run_style verlet/kk
-
-The KOKKOS package requires the Kokkos version of run_style verlet; the
-regular version cannot be used.
+The MIST library is solely responsible for updating the system state.  Any
+fixes thar are defined are ignored
 
 */
