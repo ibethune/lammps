@@ -81,6 +81,8 @@ void Mist::init()
   if (atom->avec->forceclearflag) extraflag = 1;
 
   if (domain->triclinic) error->all(FLERR, "MIST only supports orthorhombic cells");
+  if (domain->xperiodic != domain->yperiodic || domain->xperiodic != domain->zperiodic)
+    error->all(FLERR, "MIST supports xyz-periodic or non-periodic systems.  1D or 2D periodicity is not supported");
 
 }
 
@@ -504,6 +506,12 @@ void Mist::mist_setup(){
     if (id < 0) error->all(FLERR,"MIST could not find thermo_pe compute");
     pe_compute = modify->compute[id];
     MIST_chkerr(MIST_SetPotentialEnergy(&(pe_compute->scalar)),__FILE__,__LINE__);
+  }
+
+  if (domain->xperiodic) {
+    MIST_SetCell(domain->boxhi[0]-domain->boxlo[0], 0.0, 0.0,
+                 0.0, domain->boxhi[1]-domain->boxlo[1], 0.0,
+                 0.0, 0.0, domain->boxhi[2]-domain->boxlo[2]);
   }
 
   // XXX only works in serial case
