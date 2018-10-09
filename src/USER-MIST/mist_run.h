@@ -59,6 +59,8 @@ class Mist : public Integrate {
 
   class Compute *pe_compute;
 
+  double *masses;
+
 };
 
 }

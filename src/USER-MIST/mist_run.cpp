@@ -44,6 +44,7 @@ Mist::Mist(LAMMPS *lmp, int narg, char **arg) :
 
   energy_required = false;
   pe_compute = NULL;
+  masses = NULL;
 }
 
 /* ----------------------------------------------------------------------
@@ -284,6 +285,9 @@ void Mist::cleanup()
   // Finalise MIST library
   MIST_chkerr(MIST_Cleanup(),__FILE__,__LINE__);
 
+  delete[] masses;
+  masses = NULL;
+
   modify->post_run();
   domain->box_too_small_check();
   update->update_time();
@@ -509,13 +513,14 @@ void Mist::mist_setup(){
   }
 
   if (domain->xperiodic) {
-    MIST_SetCell(domain->boxhi[0]-domain->boxlo[0], 0.0, 0.0,
-                 0.0, domain->boxhi[1]-domain->boxlo[1], 0.0,
-                 0.0, 0.0, domain->boxhi[2]-domain->boxlo[2]);
+    MIST_chkerr(MIST_SetCell(domain->boxhi[0]-domain->boxlo[0], 0.0, 0.0,
+                             0.0, domain->boxhi[1]-domain->boxlo[1], 0.0,
+                             0.0, 0.0, domain->boxhi[2]-domain->boxlo[2]),__FILE__,__LINE__);
   }
 
   // XXX only works in serial case
-  MIST_chkerr(MIST_SetNumParticles(atom->nlocal),__FILE__,__LINE__);
+  int natoms = atom->nlocal;//atom->natoms;
+  MIST_chkerr(MIST_SetNumParticles(natoms),__FILE__,__LINE__);
   MIST_chkerr(MIST_SetKinds(atom->type),__FILE__,__LINE__);
   MIST_chkerr(MIST_SetPositions(*atom->x),__FILE__,__LINE__);
   MIST_chkerr(MIST_SetVelocities(*atom->v),__FILE__,__LINE__);
@@ -524,18 +529,17 @@ void Mist::mist_setup(){
   MIST_chkerr(MIST_SetForceCallback(lammps_force_wrapper, (void *)this),__FILE__,__LINE__);
 
   // XXX serial only
-  double *masses = new double [sizeof(double)*atom->nlocal];
+  masses = new double [sizeof(double)*atom->nlocal];
   double *mass = atom->mass;
   double *rmass = atom->rmass;
   int *type = atom->type;
   int *mask = atom->mask;
-  int nratoms = atom->nlocal;//atom->natoms;
 
   if (rmass) {
-    for (int i = 0; i < nratoms; i++)
+    for (int i = 0; i < natoms; i++)
       masses[i]= rmass[i] / force->ftm2v;
   } else {
-    for (int i = 0; i < nratoms; i++)
+    for (int i = 0; i < natoms; i++)
       masses[i]= mass[type[i]] / force->ftm2v;
   }
 
@@ -546,36 +550,30 @@ void Mist::mist_setup(){
 
   MIST_chkerr(MIST_SetNumBonds(nbonds),__FILE__,__LINE__);
 
-  // XXX This needs testing
-  if (atom->molecular) {
-    for (int i = 0; i < nratoms; i++)
-    {
-      for (int j=0; j<atom->num_bond[i]; j++){
-
-        double *y=atom->x[atom->bond_atom[i][j]];
-        double *tmp=new double[3];
-//fprintf(screen, "Atom position y = %f %f %f \n", y[0], y[1], y[2]);
-
+  if (atom->molecular == 1) {
+    for (int i = 0; i < natoms; i++) {
+      for (int b=0; b<atom->num_bond[i]; b++){
+        int j = atom->map(atom->bond_atom[i][b]); // local atom index
+        double *y=atom->x[j];
+        double tmp[3];
         MathExtra::sub3(atom->x[i],y, tmp);
+        domain->minimum_image(tmp);
         double dist = MathExtra::len3(tmp);
 
-        //  fprintf(screen,"dist =%f\n", dist);
+        bool hydrogen = lround(masses[i] * force->ftm2v) == 1 || lround(masses[j] * force->ftm2v) == 1;
 
-       MIST_chkerr(MIST_SetBond(counter, // bond index
+        MIST_chkerr(MIST_SetBond(counter, // bond index
                     i, // atom a
-                    atom->bond_atom[i][j], // atom b
+                    j, // atom b
                     dist, // bond length
-                  false // if either atom is a hydrogen
+                    hydrogen // if either atom is a hydrogen
                     ),__FILE__,__LINE__);
 
-                    //double tmp2=  atom->bond->eatom[counter];
-                    //->single(atom->bond_type[i][atom->bond_atom[i][j]],dist,i,  atom->bond_atom[i][j],tmp2);
-            //        fprintf(screen, "\n bond force component %f\n", tmp2);
-                      //while(1);
-
                     counter++;
-              }
+      }
     }
+  } else if (atom->molecular == 2) {
+    error->all(FLERR, "Molecule template system not implemented with MIST");
   }
 
 }
