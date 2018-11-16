@@ -41,9 +41,9 @@ if (test $1 = 1) then
     sed -i -e 's|^PKG_INC =[ \t]*|&-I..\/..\/lib\/mist |' ../Makefile.package
     sed -i -e 's|^PKG_PATH =[ \t]*|&-L..\/..\/lib\/mist |' ../Makefile.package
     sed -i -e 's|^PKG_LIB =[ \t]*|&-lmist |' ../Makefile.package
-    sed -i -e 's|^PKG_SYSINC =[ \t]*|&$(mist_SYSINC) |' ../Makefile.package
-    sed -i -e 's|^PKG_SYSLIB =[ \t]*|&$(mist_SYSLIB) |' ../Makefile.package
-    sed -i -e 's|^PKG_SYSPATH =[ \t]*|&$(mist_SYSPATH) |' ../Makefile.package
+    sed -i -e 's|^PKG_SYSINC =[ \t]*|&$(user-mist_SYSINC) |' ../Makefile.package
+    sed -i -e 's|^PKG_SYSLIB =[ \t]*|&$(user-mist_SYSLIB) |' ../Makefile.package
+    sed -i -e 's|^PKG_SYSPATH =[ \t]*|&$(user-mist_SYSPATH) |' ../Makefile.package
   fi
 
   if (test -e ../Makefile.package.settings) then

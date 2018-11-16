@@ -478,7 +478,11 @@ void Mist::mist_setup(){
 
   // Initialise MIST library
 
+#ifdef __MIST_WITH_MPI
+  MIST_chkerr(MIST_Init_MPI(world),__FILE__,__LINE__);
+#else
   MIST_chkerr(MIST_Init(),__FILE__,__LINE__);
+#endif
 
   double amu = 1.0; // for lj, real, metal, and electron units
 
