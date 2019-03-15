@@ -301,6 +301,8 @@ class Atom : protected Pointers {
   int map_style_set();
   void map_delete();
   int map_find_hash(tagint);
+  int *permute; // permutation vector, need to access to keep forces sorted
+
 
  protected:
 
@@ -331,7 +333,6 @@ class Atom : protected Pointers {
   int maxnext;                    // max size of next,permute
   int *binhead;                   // 1st atom in each bin
   int *next;                      // next atom in bin
-  int *permute;                   // permutation vector
   double bininvx,bininvy,bininvz; // inverse actual bin sizes
   double bboxlo[3],bboxhi[3];     // bounding box of my sub-domain
 
