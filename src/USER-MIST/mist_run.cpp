@@ -85,6 +85,9 @@ void Mist::init()
   if (domain->xperiodic != domain->yperiodic || domain->xperiodic != domain->zperiodic)
     error->all(FLERR, "MIST supports xyz-periodic or non-periodic systems.  1D or 2D periodicity is not supported");
 
+  neighbor->skin *= (float)(neighbor->every+1)/(float)(neighbor->every);
+  fprintf(screen, "Increasing neighbor list skin size to %lf accomodate MIST moving atoms during the step.\n", neighbor->skin);
+
 }
 
 /* ----------------------------------------------------------------------
@@ -234,7 +237,7 @@ void Mist::setup_minimal(int flag)
 void Mist::run(int n)
 {
   bigint ntimestep;
-  int nflag,sortflag;
+  int sortflag;
 
   int n_post_integrate = modify->n_post_integrate;
   int n_pre_exchange = modify->n_pre_exchange;
@@ -258,96 +261,91 @@ void Mist::run(int n)
     ev_set(ntimestep);
     if (energy_required) eflag |= 1;
 
-  // regular communication vs neighbor list rebuild
+    // regular communication vs neighbor list rebuild
 
-  int nflag = neighbor->decide();
+    int nflag = neighbor->decide();
 
-  if (nflag != 0) {
-    //fprintf(screen, "pre natoms=%d, nlocal=%d\n",atom->natoms,atom->nlocal);
-    if (modify->n_pre_exchange) {
-      timer->stamp();
-      modify->pre_exchange();
-      timer->stamp(Timer::MODIFY);
-    }
-    domain->pbc();
-    if (domain->box_change) {
-      domain->reset_box();
-      comm->setup();
-      if (neighbor->style) neighbor->setup_bins();
-    }
-    timer->stamp();
-    comm->exchange();
-    if (atom->sortfreq > 0 && update->ntimestep >= atom->nextsort) {
-      atom->sort();
-
-      // Also sort the forces
-      int *current = new int[atom->nlocal];
-      int *permute = atom->permute;
-      double *temp = new double[3];
-      int empty;
-      for (int j = 0; j < atom->nlocal; j++) current[j] = j;
-      for (int j = 0; j < atom->nlocal; j++) {
-         if (current[j] == permute[j]) continue;
-         // Copy force on j to temp
-         temp[0] = atom->f[j][0];
-         temp[1] = atom->f[j][1];
-         temp[2] = atom->f[j][2];
-         empty = j;
-         while (permute[empty] != j) {
-           //copy force on permute[empty] to empty
-           atom->f[empty][0] = atom->f[permute[empty]][0];
-           atom->f[empty][1] = atom->f[permute[empty]][1];
-           atom->f[empty][2] = atom->f[permute[empty]][2];
-           empty = current[empty] = permute[empty];
-         }
-         // Copy force on temp to empty
-         atom->f[empty][0] = temp[0];
-         atom->f[empty][1] = temp[1];
-         atom->f[empty][2] = temp[2];
-         current[empty] = permute[empty];
-
-         //fprintf(screen, "permute[%d] = %d\n",i,atom->permute[i]);
+    if (nflag != 0) {
+      if (modify->n_pre_exchange) {
+        timer->stamp();
+        modify->pre_exchange();
+        timer->stamp(Timer::MODIFY);
       }
-      delete[] temp;
-      delete[] current;
+      domain->pbc();
+      if (domain->box_change) {
+        domain->reset_box();
+        comm->setup();
+        if (neighbor->style) neighbor->setup_bins();
+      }
+      timer->stamp();
+      comm->exchange();
+      if (atom->sortfreq > 0 && update->ntimestep >= atom->nextsort) {
+        atom->sort();
+
+        // Also sort the forces
+        int *current = new int[atom->nlocal];
+        int *permute = atom->permute;
+        double *temp = new double[3];
+        int empty;
+        for (int j = 0; j < atom->nlocal; j++) current[j] = j;
+        for (int j = 0; j < atom->nlocal; j++) {
+           if (current[j] == permute[j]) continue;
+           // Copy force on j to temp
+           temp[0] = atom->f[j][0];
+           temp[1] = atom->f[j][1];
+           temp[2] = atom->f[j][2];
+           empty = j;
+           while (permute[empty] != j) {
+             //copy force on permute[empty] to empty
+             atom->f[empty][0] = atom->f[permute[empty]][0];
+             atom->f[empty][1] = atom->f[permute[empty]][1];
+             atom->f[empty][2] = atom->f[permute[empty]][2];
+             empty = current[empty] = permute[empty];
+           }
+           // Copy force on temp to empty
+           atom->f[empty][0] = temp[0];
+           atom->f[empty][1] = temp[1];
+           atom->f[empty][2] = temp[2];
+           current[empty] = permute[empty];
+        }
+        delete[] temp;
+        delete[] current;
+      }
+      comm->borders();
+      timer->stamp(Timer::COMM);
+      if (modify->n_pre_neighbor) {
+        modify->pre_neighbor();
+        timer->stamp(Timer::MODIFY);
+      }
+      neighbor->build(1);
+      timer->stamp(Timer::NEIGH);
+      if (modify->n_post_neighbor) {
+        modify->post_neighbor();
+        timer->stamp(Timer::MODIFY);
+      }
+      MIST_chkerr(MIST_SetNumParticles(atom->nlocal),__FILE__,__LINE__);
+
+      MIST_chkerr(MIST_SetKinds(atom->type),__FILE__,__LINE__);
+      MIST_chkerr(MIST_SetPositions(*atom->x),__FILE__,__LINE__);
+      MIST_chkerr(MIST_SetVelocities(*atom->v),__FILE__,__LINE__);
+      MIST_chkerr(MIST_SetForces(*atom->f),__FILE__,__LINE__);
+
+      delete[] masses;
+      masses = new double [sizeof(double)*atom->nlocal];
+      double *mass = atom->mass;
+      double *rmass = atom->rmass;
+      int *type = atom->type;
+
+      if (rmass) {
+        for (int i = 0; i < atom->nlocal; i++)
+          masses[i]= rmass[i] / force->ftm2v;
+      } else {
+        for (int i = 0; i < atom->nlocal; i++)
+          masses[i]= mass[type[i]] / force->ftm2v;
+      }
+
+      MIST_chkerr(MIST_SetMasses(masses),__FILE__,__LINE__);
     }
-    comm->borders();
-    timer->stamp(Timer::COMM);
-    if (modify->n_pre_neighbor) {
-      modify->pre_neighbor();
-      timer->stamp(Timer::MODIFY);
-    }
-    neighbor->build(1);
-    timer->stamp(Timer::NEIGH);
-    if (modify->n_post_neighbor) {
-      modify->post_neighbor();
-      timer->stamp(Timer::MODIFY);
-    }
-    //fprintf(screen, "post natoms=%d, nlocal=%d\n",atom->natoms,atom->nlocal);
-    MIST_chkerr(MIST_SetNumParticles(atom->nlocal),__FILE__,__LINE__);
-
-    MIST_chkerr(MIST_SetKinds(atom->type),__FILE__,__LINE__);
-    MIST_chkerr(MIST_SetPositions(*atom->x),__FILE__,__LINE__);
-    MIST_chkerr(MIST_SetVelocities(*atom->v),__FILE__,__LINE__);
-    MIST_chkerr(MIST_SetForces(*atom->f),__FILE__,__LINE__);
-
-    delete[] masses;
-    masses = new double [sizeof(double)*atom->nlocal];
-    double *mass = atom->mass;
-    double *rmass = atom->rmass;
-    int *type = atom->type;
-
-    if (rmass) {
-      for (int i = 0; i < atom->nlocal; i++)
-        masses[i]= rmass[i] / force->ftm2v;
-    } else {
-      for (int i = 0; i < atom->nlocal; i++)
-        masses[i]= mass[type[i]] / force->ftm2v;
-    }
-
-    MIST_chkerr(MIST_SetMasses(masses),__FILE__,__LINE__);
-  }
-
 
     MIST_chkerr(MIST_Step(update->dt),__FILE__,__LINE__);
 
@@ -553,7 +551,6 @@ void Mist::mist_setup(){
   // masses are stored scaled by a factor 1/ftm2v
   MIST_chkerr(MIST_SetUnitSystem(force->boltz, force->femtosecond*1000.0, amu*force->ftm2v, force->angstrom ),__FILE__,__LINE__);
 
-
   int features;
   MIST_chkerr(MIST_GetFeatures(&features),__FILE__,__LINE__);
 
@@ -577,7 +574,6 @@ void Mist::mist_setup(){
   }
 
   int natoms = atom->nlocal;
-  fprintf(screen, "natoms=%d, nlocal=%d\n",atom->natoms,atom->nlocal);
   MIST_chkerr(MIST_SetNumParticles(natoms),__FILE__,__LINE__);
   MIST_chkerr(MIST_SetKinds(atom->type),__FILE__,__LINE__);
   MIST_chkerr(MIST_SetPositions(*atom->x),__FILE__,__LINE__);
@@ -602,7 +598,6 @@ void Mist::mist_setup(){
   MIST_chkerr(MIST_SetMasses(masses),__FILE__,__LINE__);
 
   int nbonds=atom->nbonds;
-  fprintf(screen, "nbonds=%d",nbonds);
   int counter=0;
 
   MIST_chkerr(MIST_SetNumBonds(nbonds),__FILE__,__LINE__);
