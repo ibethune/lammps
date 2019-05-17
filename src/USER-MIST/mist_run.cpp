@@ -282,7 +282,7 @@ void Mist::run(int n)
       if (atom->sortfreq > 0 && update->ntimestep >= atom->nextsort) {
         atom->sort();
 
-        // Also sort the forces
+       /* // Also sort the forces - only needed if we don't recompute the forces!
         int *current = new int[atom->nlocal];
         int *permute = atom->permute;
         double *temp = new double[3];
@@ -310,6 +310,7 @@ void Mist::run(int n)
         }
         delete[] temp;
         delete[] current;
+       */
       }
       comm->borders();
       timer->stamp(Timer::COMM);
@@ -346,6 +347,10 @@ void Mist::run(int n)
 
       MIST_chkerr(MIST_SetMasses(masses),__FILE__,__LINE__);
     }
+
+    update_forces(); // More expensive than just communicating the exchanged atom's forces
+    // XXX To remove require ensuring that forces are also communication for any atoms that
+    // are migrated during comm->exchange(), including local atoms that have moved
 
     MIST_chkerr(MIST_Step(update->dt),__FILE__,__LINE__);
 
