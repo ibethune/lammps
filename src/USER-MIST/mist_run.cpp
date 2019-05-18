@@ -60,6 +60,14 @@ void Mist::init()
   if (modify->nfix != 0 && comm->me == 0)
     error->warning(FLERR,"Fixes have been defined, but MIST will ignore them!");
 
+  // Add MIST fix to copy forces whenever particles are migrated
+  char **newarg = new char*[3];
+  newarg[0] = (char *) "MIST";
+  newarg[1] = (char *) "all";
+  newarg[2] = (char *) "mist";
+  modify->add_fix(3,newarg);
+  delete [] newarg;
+
   // virial_style:
   // 1 if computed explicitly by pair->compute via sum over pair interactions
   // 2 if computed implicitly by pair->virial_fdotr_compute via sum over ghosts
@@ -281,36 +289,6 @@ void Mist::run(int n)
       comm->exchange();
       if (atom->sortfreq > 0 && update->ntimestep >= atom->nextsort) {
         atom->sort();
-
-       /* // Also sort the forces - only needed if we don't recompute the forces!
-        int *current = new int[atom->nlocal];
-        int *permute = atom->permute;
-        double *temp = new double[3];
-        int empty;
-        for (int j = 0; j < atom->nlocal; j++) current[j] = j;
-        for (int j = 0; j < atom->nlocal; j++) {
-           if (current[j] == permute[j]) continue;
-           // Copy force on j to temp
-           temp[0] = atom->f[j][0];
-           temp[1] = atom->f[j][1];
-           temp[2] = atom->f[j][2];
-           empty = j;
-           while (permute[empty] != j) {
-             //copy force on permute[empty] to empty
-             atom->f[empty][0] = atom->f[permute[empty]][0];
-             atom->f[empty][1] = atom->f[permute[empty]][1];
-             atom->f[empty][2] = atom->f[permute[empty]][2];
-             empty = current[empty] = permute[empty];
-           }
-           // Copy force on temp to empty
-           atom->f[empty][0] = temp[0];
-           atom->f[empty][1] = temp[1];
-           atom->f[empty][2] = temp[2];
-           current[empty] = permute[empty];
-        }
-        delete[] temp;
-        delete[] current;
-       */
       }
       comm->borders();
       timer->stamp(Timer::COMM);
@@ -347,10 +325,6 @@ void Mist::run(int n)
 
       MIST_chkerr(MIST_SetMasses(masses),__FILE__,__LINE__);
     }
-
-    update_forces(); // More expensive than just communicating the exchanged atom's forces
-    // XXX To remove require ensuring that forces are also communication for any atoms that
-    // are migrated during comm->exchange(), including local atoms that have moved
 
     MIST_chkerr(MIST_Step(update->dt),__FILE__,__LINE__);
 
