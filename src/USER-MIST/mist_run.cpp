@@ -547,7 +547,9 @@ void Mist::mist_setup(){
   }
 
   if (domain->xperiodic) {
-    MIST_chkerr(MIST_SetCell(domain),__FILE__,__LINE__);
+    MIST_chkerr(MIST_SetCell(domain->boxhi[0]-domain->boxlo[0], 0.0, 0.0,
+                             0.0, domain->boxhi[1]-domain->boxlo[1], 0.0,
+                             0.0, 0.0, domain->boxhi[2]-domain->boxlo[2]),__FILE__,__LINE__);
   }
 
   int natoms = atom->nlocal;
