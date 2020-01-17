@@ -25,6 +25,12 @@ IntegrateStyle(mist,Mist)
 
 namespace LAMMPS_NS {
 
+typedef struct
+{
+  Domain *d;
+  Force *f;
+} cell_data_t;
+
 class Mist : public Integrate {
  public:
   Mist(class LAMMPS *, int, char **);
@@ -60,6 +66,8 @@ class Mist : public Integrate {
   class Compute *pe_compute;
 
   double *masses;
+
+  cell_data_t cell_data;
 
 };
 
