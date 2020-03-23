@@ -43,7 +43,9 @@ Mist::Mist(LAMMPS *lmp, int narg, char **arg) :
   Integrate(lmp, narg, arg) {
 
   energy_required = false;
+  pressure_required = false;
   pe_compute = NULL;
+  press_compute = NULL;
   masses = NULL;
 }
 
@@ -144,7 +146,6 @@ void Mist::setup(int flag)
 
   force->setup();
   ev_set(update->ntimestep);
-  if (energy_required) eflag |= 1;
   force_clear();
   modify->setup_pre_force(vflag);
 
@@ -210,7 +211,6 @@ void Mist::setup_minimal(int flag)
   // compute all forces
 
   ev_set(update->ntimestep);
-  if (energy_required) eflag |= 1;
   force_clear();
   modify->setup_pre_force(vflag);
 
@@ -266,8 +266,11 @@ void Mist::run(int n)
     }
 
     ntimestep = ++update->ntimestep;
+    // If needed, make sure we are accumulating energy and pressure at this step
+    if (energy_required) pe_compute->addstep(ntimestep);
+    if (pressure_required) press_compute->addstep(ntimestep);
+
     ev_set(ntimestep);
-    if (energy_required) eflag |= 1;
 
     // regular communication vs neighbor list rebuild
 
@@ -501,6 +504,9 @@ void Mist::update_forces()
   // force modification
 
   if (modify->n_post_force) modify->post_force(vflag);
+
+  if (energy_required) pe_compute->compute_scalar();
+  if (pressure_required) press_compute->compute_scalar();
 }
 
 /* ---------------------------------------------------------------------- */
@@ -544,6 +550,14 @@ void Mist::mist_setup(){
     if (id < 0) error->all(FLERR,"MIST could not find thermo_pe compute");
     pe_compute = modify->compute[id];
     MIST_chkerr(MIST_SetPotentialEnergy(&(pe_compute->scalar)),__FILE__,__LINE__);
+  }
+
+  if (features & MIST_FEATURE_REQUIRES_PRESSURE_WITH_FORCES) {
+    pressure_required = true;
+    int id = modify->find_compute("thermo_press");
+    if (id < 0) error->all(FLERR,"MIST could not find thermo_press compute");
+    press_compute = modify->compute[id];
+    MIST_chkerr(MIST_SetPressure(&(press_compute->scalar)),__FILE__,__LINE__);
   }
 
   if (domain->xperiodic) {
