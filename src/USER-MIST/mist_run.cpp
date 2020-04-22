@@ -521,20 +521,36 @@ void Mist::mist_setup(){
   MIST_chkerr(MIST_Init(),__FILE__,__LINE__);
 #endif
 
-  double amu = 1.0; // for lj, real, metal, and electron units
+  double amu, atm;
 
   if (strcmp(update->unit_style,"si") == 0) {
     amu = 1.660539040e-27;
+    atm = 101325;
   } else if (strcmp(update->unit_style,"cgs") == 0) {
     amu = 1.660539040e-24;
+    atm = 1000000.0 / 0.987;
   } else if (strcmp(update->unit_style,"micro") == 0) {
     amu = 1.660539040e-12;
+    atm = 1.01325e-4;
   } else if (strcmp(update->unit_style,"nano") == 0) {
     amu = 1.660539040e-6;
+    atm = 1.01325e-10;
+  } else if (strcmp(update->unit_style,"real") == 0) {
+    amu = 1.0;
+    atm = 1.0;
+  }else if (strcmp(update->unit_style,"electron") == 0) {
+    amu = 1.0;
+    atm = 1.0;
+  }else if (strcmp(update->unit_style,"metal") == 0) {
+    amu = 1.0;
+    atm = 1.0 / 0.987;
+  }else if (strcmp(update->unit_style,"lj") == 0) {
+    amu = 1.0;
+    atm = 1.0;
   }
 
   // masses are stored scaled by a factor 1/ftm2v
-  MIST_chkerr(MIST_SetUnitSystem(force->boltz, force->femtosecond*1000.0, amu*force->ftm2v, force->angstrom ),__FILE__,__LINE__);
+  MIST_chkerr(MIST_SetUnitSystem(force->boltz, force->femtosecond*1000.0, amu*force->ftm2v, force->angstrom, atm ),__FILE__,__LINE__);
 
   int features;
   MIST_chkerr(MIST_GetFeatures(&features),__FILE__,__LINE__);
