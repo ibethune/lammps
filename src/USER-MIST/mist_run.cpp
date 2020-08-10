@@ -543,7 +543,7 @@ void Mist::mist_setup(){
     atm = 1.0;
   }else if (strcmp(update->unit_style,"metal") == 0) {
     amu = 1.0;
-    atm = 1.0 / 0.987;
+    atm = 1.0 / 0.9869232667;
   }else if (strcmp(update->unit_style,"lj") == 0) {
     amu = 1.0;
     atm = 1.0;
